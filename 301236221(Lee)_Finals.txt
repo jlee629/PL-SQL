@@ -1,0 +1,102 @@
+-- Question 1-1
+CREATE OR REPLACE FUNCTION DAY_ORD_SF(f_order_date bb_basket.dtcreated%TYPE)
+  RETURN VARCHAR2
+IS
+BEGIN 
+  RETURN CASE TO_CHAR(f_order_date, 'd')
+            WHEN '1' THEN 'Sunday'
+            WHEN '2' THEN 'Monday'
+            WHEN '3' THEN 'Tuesday'
+            WHEN '4' THEN 'Wednesday'
+            WHEN '5' THEN 'Friday'
+            WHEN '6' THEN 'Saturday'
+            WHEN '7' THEN 'Sunday'
+         END;
+END;
+
+
+-- Question 1-2
+SELECT idbasket, DAY_ORD_SF(dtcreated) FROM bb_basket;
+
+-- Question 1-3
+SELECT DAY_ORD_SF(dtcreated) AS WEEKDAY, COUNT(*) AS TOTAL_BASKETS 
+  FROM bb_basket
+  GROUP BY day_ord_sf(dtcreated)
+  ORDER BY TOTAL_BASKETS DESC
+  FETCH FIRST 1 ROW ONLY;
+
+-- Question 2
+
+-- (2-1) Drop a BB_SALES_SUM table if you have already have
+DROP TABLE bb_sales_sum CASCADE CONSTRAINTS;
+
+-- 2-2 Create a BB_SALES_SUM table
+CREATE TABLE BB_SALES_SUM (
+   idproduct NUMBER(2) PRIMARY KEY,
+   total_sales NUMBER(10,2),
+   total_qty NUMBER(5)
+);
+
+-- 2-3 Create a BB_SALESUM_TRG trigger
+CREATE OR REPLACE TRIGGER BB_SALESUM_TRG
+  AFTER UPDATE OF orderplaced ON bb_basket
+  FOR EACH ROW
+  WHEN (NEW.orderplaced = 1)
+DECLARE
+    v_sales NUMBER(10,2);
+    v_qty NUMBER(5);
+BEGIN
+    FOR rec_basketitem IN (SELECT idproduct, price, quantity FROM bb_basketitem WHERE idbasket = :NEW.idbasket) LOOP
+        v_sales := rec_basketitem.price * rec_basketitem.quantity;
+        v_qty := rec_basketItem.quantity;
+        
+        MERGE INTO BB_SALES_SUM s
+        USING (SELECT rec_basketitem.idproduct AS prod_id FROM DUAL) src
+        ON (s.idproduct = src.prod_id)
+
+        WHEN MATCHED THEN 
+            UPDATE SET s.total_sales = s.total_sales + v_sales,
+                       s.total_qty = s.total_qty + v_qty
+
+        WHEN NOT MATCHED THEN 
+            INSERT (idproduct, total_sales, total_qty) VALUES (rec_basketItem.idproduct, v_sales, v_qty);
+
+    END LOOP;
+END;
+/
+
+-- 2-4 Reset the ORDERPLACED column to 0 for basket 3
+UPDATE bb_basket SET orderplaced = 0 WHERE idBasket = 3;
+
+-- 2-5 Test the trigger
+UPDATE bb_basket SET orderplaced = 1 WHERE idBasket = 3;
+
+-- 2-6 Check the BB_SALES_SUM table
+SELECT * FROM bb_sales_sum;
+
+-- 2-7 Do a Rollback;
+ROLLBACK;
+
+
+// Question 3
+// 3-a 
+db.restaurants.find(
+    { "address.street": "7 Avenue", "cuisine": "Irish" },
+    { "name": 1, _id: 0 }
+).sort({ "address.zipcode": 1 })
+
+// 3-b
+db.restaurants.find(
+    {
+        "name": "Caffe Grazie",
+        "borough": "Manhattan",
+        "cuisine": "Italian",
+        "grades": {
+            $elemMatch: {
+                "grade": "B",
+                "score": { $gte: 15, $lte: 20 }
+            }
+        }
+    },
+    { "address": 1, _id: 0 }
+)

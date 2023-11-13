@@ -1,0 +1,245 @@
+-- Q1.
+-- PROCEDURE CODE
+CREATE OR REPLACE PROCEDURE status_ship_sp 
+(
+    p_idbasket IN bb_basketstatus.idbasket%TYPE,
+    p_date_shipped IN bb_basketstatus.dtstage%TYPE,
+    p_shipper IN bb_basketstatus.shipper%TYPE,
+    p_tracking_number IN bb_basketstatus.shippingnum%TYPE
+) IS
+    v_idstage bb_basketstatus.idstage%TYPE := 3;
+BEGIN
+    INSERT INTO bb_basketstatus (idstatus, idbasket, idstage, dtstage, shipper, shippingnum)
+    VALUES (bb_status_seq.NEXTVAL, p_idbasket, v_idstage, p_date_shipped, p_shipper, p_tracking_number);
+    
+    DBMS_OUTPUT.PUT_LINE('The basket status has been added successfully');
+END;
+/
+
+-- TEST CODE
+DECLARE 
+    v_idbasket bb_basketstatus.idbasket%TYPE := 3; 
+    v_date_shipped bb_basketstatus.dtstage%TYPE := '20-FEB-12'; 
+    v_shipper bb_basketstatus.shipper%TYPE := 'UPS'; 
+    v_tracking_number bb_basketstatus.shippingnum%TYPE := 'ZW2384YXK4957'; 
+BEGIN
+    status_ship_sp(v_idbasket, v_date_shipped, v_shipper, v_tracking_number);
+END;
+/
+
+
+-- Q2.
+-- PROCEDURE CODE
+CREATE OR REPLACE PROCEDURE status_sp
+(
+    p_idbasket IN bb_basketstatus.idbasket%TYPE,
+    p_status_desc OUT VARCHAR2,
+    p_status_date OUT bb_basketstatus.dtstage%TYPE
+) IS
+BEGIN
+    SELECT
+        CASE idstage
+            WHEN 1 THEN 'Submitted and received'
+            WHEN 2 THEN 'Confirmed, processed, sent to shipping'
+            WHEN 3 THEN 'Shipped'
+            WHEN 4 THEN 'Cancelled'
+            WHEN 5 THEN 'Back-ordered'
+            ELSE 'Unexpected Errors'
+        END, dtstage        
+        INTO p_status_desc, p_status_date
+        FROM bb_basketstatus
+        WHERE idbasket = p_idbasket
+        ORDER BY dtstage DESC
+        FETCH FIRST 1 ROW ONLY;
+        
+        DBMS_OUTPUT.PUT_LINE('Basket ID: ' || p_idbasket || ', Status: ' || p_status_desc || ', Date: ' || p_status_date);
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        DBMS_OUTPUT.PUT_LINE('No status is available');
+END;
+
+-- TEST CODE
+DECLARE
+    v_status_desc VARCHAR2(50);
+    v_status_date bb_basketstatus.dtstage%TYPE;
+BEGIN
+    status_sp(4, v_status_desc, v_status_date);
+    status_sp(6, v_status_desc, v_status_date);
+END;
+/
+
+-- Q3.
+-- PROCEDURE CODE
+CREATE OR REPLACE PROCEDURE promo_ship_sp
+(
+    p_cutoff_date IN bb_basket.dtcreated%TYPE
+) IS
+    v_month bb_promolist.month%TYPE := 'APR';
+    v_year bb_promolist.year%TYPE := 2012;
+    v_promo_flag bb_promolist.promo_flag%TYPE := 1;
+BEGIN
+    FOR rec_promo IN 
+    (
+        SELECT idshopper, MAX(dtcreated) AS created_date
+        FROM bb_basket
+        GROUP BY idshopper
+        HAVING MAX(dtcreated) < p_cutoff_date
+    )
+    
+    LOOP
+        INSERT INTO bb_promolist (idshopper, month, year, promo_flag)
+            VALUES (rec_promo.idshopper, v_month, v_year, v_promo_flag);
+    END LOOP;
+    
+    DBMS_OUTPUT.PUT_LINE('The promolist has been updated successfully');
+END;
+/
+
+-- TEST CODE
+BEGIN
+    promo_ship_sp('15-FEB-12');
+END;
+/
+
+-- Q4
+-- STEP 1: Create a Function
+CREATE OR REPLACE FUNCTION verify_login_func(f_username IN bb_shopper.username%TYPE, f_password IN bb_shopper.password%TYPE) RETURN CHAR IS
+    v_is_valid CHAR(1) := 'N';
+    v_user_count NUMBER;
+BEGIN
+    SELECT COUNT(*) INTO v_user_count
+    FROM bb_shopper
+    WHERE username = f_username AND password = f_password;
+
+    IF v_user_count > 0 THEN
+        v_is_valid := 'Y';
+        DBMS_OUTPUT.PUT_LINE('Login Result: ' || v_is_valid);
+    ELSE
+        RAISE NO_DATA_FOUND;
+    END IF;
+
+    RETURN v_is_valid;
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        DBMS_OUTPUT.PUT_LINE('Login Result: ' || v_is_valid);
+        DBMS_OUTPUT.PUT_LINE('Logon values are invalid');
+        RETURN v_is_valid;
+END verify_login_func;
+/
+
+-- STEP 2: Test the Function
+DECLARE
+    v_login_result CHAR;
+BEGIN
+    v_login_result := verify_login_func('gma1', 'goofy');
+  
+    IF v_login_result = 'Y' THEN
+        DBMS_OUTPUT.PUT_LINE('Login successful');
+    END IF;
+END;
+/
+
+-- STEP 3: Create a Package
+-- PACKAGE SPECIFICAITION
+CREATE OR REPLACE PACKAGE login_pkg IS
+    v_shopper_id bb_shopper.idshopper%TYPE;
+    v_zipcode_prefix bb_shopper.zipcode%TYPE;
+
+    FUNCTION verify_login(f_username IN bb_shopper.username%TYPE, f_password IN bb_shopper.password%TYPE) RETURN CHAR;
+END;
+/
+
+-- PACKAGE BODY
+CREATE OR REPLACE PACKAGE BODY login_pkg IS
+    FUNCTION verify_login(f_username IN bb_shopper.username%TYPE, f_password IN bb_shopper.password%TYPE) RETURN CHAR IS
+        v_is_valid CHAR(1) := 'N';
+        v_user_count NUMBER;
+    BEGIN
+        SELECT COUNT(*) INTO v_user_count
+        FROM bb_shopper
+        WHERE username = f_username AND password = f_password;
+
+        IF v_user_count > 0 THEN
+            SELECT idshopper, SUBSTR(zipcode, 1, 3)
+                INTO v_shopper_id, v_zipcode_prefix
+                FROM bb_shopper
+                WHERE username = f_username;
+
+            v_is_valid := 'Y';
+            DBMS_OUTPUT.PUT_LINE('Login Result: ' || v_is_valid);
+        ELSE
+            RAISE NO_DATA_FOUND;
+        END IF;
+
+        RETURN v_is_valid;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            DBMS_OUTPUT.PUT_LINE('Login Result: ' || v_is_valid);
+            DBMS_OUTPUT.PUT_LINE('Logon values are invalid');
+            RETURN v_is_valid;
+    END verify_login;
+END;
+/
+
+-- STEP 4: Test the Package
+DECLARE
+    v_login_result CHAR;
+BEGIN
+    v_login_result := login_pkg.verify_login('gma1', 'goofy');
+  
+    IF v_login_result = 'Y' THEN
+        DBMS_OUTPUT.PUT_LINE('Login successful');
+    END IF;
+END;
+/
+
+-- STEP 5: Print the Variables
+BEGIN
+    DBMS_OUTPUT.PUT_LINE('Shopper ID: ' || login_pkg.v_shopper_id || ', Zip Code Prefix: ' || login_pkg.v_zipcode_prefix);
+END;
+/
+
+-- Q5.
+-- PACKAGE SPECIFICATION
+CREATE OR REPLACE PACKAGE tax_pkg IS
+  FUNCTION get_tax_rate(f_state IN bb_tax.state%TYPE) RETURN NUMBER;
+  CURSOR c_tax_rate(p_state IN bb_tax.state%TYPE) IS
+    SELECT taxrate
+    FROM bb_tax
+    WHERE state = p_state;
+END;
+/
+
+-- PACKAGE BODY
+CREATE OR REPLACE PACKAGE BODY tax_pkg IS
+  FUNCTION get_tax_rate(f_state IN bb_tax.state%TYPE) RETURN NUMBER IS
+    v_tax_rate bb_tax.taxrate%TYPE;
+  BEGIN
+    OPEN c_tax_rate(f_state);
+    FETCH c_tax_rate INTO v_tax_rate;
+
+    IF c_tax_rate%FOUND THEN
+      DBMS_OUTPUT.PUT_LINE('Tax Rate for ' || f_state || ': ' || v_tax_rate);
+    ELSE
+      RAISE NO_DATA_FOUND;
+    END IF;
+
+    CLOSE c_tax_rate;
+
+    RETURN v_tax_rate;
+
+  EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+      DBMS_OUTPUT.PUT_LINE('No Data Found');
+      RETURN 0;
+  END;
+END;
+/
+
+-- TEST CODE
+DECLARE
+  v_tax_rate NUMBER;
+BEGIN
+  v_tax_rate := tax_pkg.get_tax_rate('NC');
+END;
+/

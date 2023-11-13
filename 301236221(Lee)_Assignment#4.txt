@@ -1,0 +1,112 @@
+// Q1
+db.listingsAndReviews.aggregate([
+  {
+    $match: {
+      "host.host_verifications": { $exists: true },
+      "host.host_picture_url": { $exists: true },
+      $expr: { $gte: [{ $size: "$host.host_verifications" }, 3] }
+    }
+  },
+  {
+    $project: {
+      "listing_url": 1,
+      "name": 1,
+      "address": 1,
+      "host.host_verifications": 1,
+      "host.host_picture_url": 1,
+      "host_verifications_count": { $size: "$host.host_verifications" }
+    }
+  }
+])
+
+// Q2
+// X (No Movie Collection)
+
+// Q3
+db.restaurants.aggregate([
+  { $match: { cuisine: { $regex: /Pizza/i } } }, 
+  { $unwind: "$grades" },
+  {
+    $group: {
+      _id: { name: "$name", address: "$address", cuisine: "$cuisine" },
+      avgScore: { $avg: "$grades.score" }
+    }
+  },
+  {
+    $sort: {
+      avgScore: -1
+    }
+  },
+  {
+    $limit: 1
+  },
+  {
+    $project: {
+      _id: 0,
+      name: "$_id.name",
+      address: "$_id.address",
+      cuisine: "$_id.cuisine",
+      avgScore: 1
+    }
+  }
+])
+
+// Q4
+db.restaurants.aggregate([
+  { $match: { cuisine: "Turkish" } },
+
+  { $unwind: "$grades" },
+
+  { $match: { "grades.grade": "A" } },
+
+  {
+    $group: {
+      _id: {
+        restaurant_id: "$restaurant_id",
+        name: "$name"
+      },
+      numAgrades: { $sum: 1 }
+    }
+  },
+
+  { $sort: { numAgrades: -1 } },
+
+  { $limit: 1 },
+
+  { $project: { _id: 0, restaurant_id: "$_id.restaurant_id", name: "$_id.name", numAgrades: 1 } }
+]);
+
+
+
+// Q5
+db.restaurants.aggregate([
+  { $match: { cuisine: "Chinese" } }, 
+
+  { $unwind: "$grades" },
+  {
+    $group: {
+      _id: { cuisine: "$cuisine", restaurant_id: "$restaurant_id" },
+      avgScore: { $avg: "$grades.score" }
+    }
+  },
+  {
+    $sort: {
+      avgScore: -1
+    }
+  },
+  {
+    $group: {
+      _id: "$_id.cuisine",
+      topRestaurants: {
+        $push: { restaurant_id: "$_id.restaurant_id", avgScore: "$avgScore" }
+      }
+    }
+  },
+  {
+    $project: {
+      _id: 0,
+      cuisine: "$_id",
+      topRestaurants: { $slice: ["$topRestaurants", 5] }
+    }
+  }
+])
